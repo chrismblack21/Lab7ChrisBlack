@@ -1,0 +1,223 @@
+@page "/users"
+@inject ILibraryService LibraryService
+
+<PageTitle>Users</PageTitle>
+
+<h2>Users</h2>
+<p>Add, edit, delete, and list users.</p>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="status-banner @(statusIsSuccess ? "status-success" : "status-error")">@statusMessage</div>
+}
+
+<div class="page-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h3>Add User</h3>
+            </div>
+        </div>
+
+        <EditForm Model="newUser" OnValidSubmit="HandleAddUser" FormName="AddUser">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <div class="field-group">
+                    <label class="field-label" for="new-user-name">Name</label>
+                    <InputText id="new-user-name" class="text-input" @bind-Value="newUser.Name" />
+                    <ValidationMessage For="() => newUser.Name" />
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label" for="new-user-email">Email</label>
+                    <InputText id="new-user-email" class="text-input" @bind-Value="newUser.Email" />
+                    <ValidationMessage For="() => newUser.Email" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="action-button">Save User</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="panel">
+        @if (editingUser is null)
+        {
+            <h3>Edit User</h3>
+            <p>Select a user from the table to edit it. A user with borrowed books cannot be deleted.</p>
+        }
+        else
+        {
+            <div class="panel-heading">
+                <div>
+                    <h3>Edit User</h3>
+                </div>
+            </div>
+
+            <EditForm Model="editingUser" OnValidSubmit="HandleEditUser" FormName="EditUser">
+                <DataAnnotationsValidator />
+                <div class="form-grid">
+                    <div class="field-group field-span">
+                        <label class="field-label">User ID</label>
+                        <input class="text-input" value="@editingUser.Id" disabled />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="edit-user-name">Name</label>
+                        <InputText id="edit-user-name" class="text-input" @bind-Value="editingUser.Name" />
+                        <ValidationMessage For="() => editingUser.Name" />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="edit-user-email">Email</label>
+                        <InputText id="edit-user-email" class="text-input" @bind-Value="editingUser.Email" />
+                        <ValidationMessage For="() => editingUser.Email" />
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="action-button">Update User</button>
+                    <button type="button" class="secondary-button" @onclick="CancelEdit">Cancel</button>
+                </div>
+            </EditForm>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h3>User List</h3>
+            <p>@users.Count users loaded.</p>
+        </div>
+    </div>
+
+    @if (users.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No users loaded</h3>
+            <p>Add a user to start checking books in and out.</p>
+        </div>
+    }
+    else
+    {
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Borrowed</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in users)
+                    {
+                        <tr>
+                            <td>@user.Id</td>
+                            <td>@user.Name</td>
+                            <td>@user.Email</td>
+                            <td>@GetBorrowedCount(user.Id)</td>
+                            <td class="table-actions">
+                                <button type="button" class="secondary-button" @onclick="() => BeginEdit(user)">Edit</button>
+                                <button type="button" class="secondary-button danger-button" @onclick="() => HandleDeleteUser(user.Id)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<User> users = Array.Empty<User>();
+    private IReadOnlyList<UserBorrowedBooks> borrowedBooks = Array.Empty<UserBorrowedBooks>();
+    private User newUser = new();
+    private User? editingUser;
+    private string? statusMessage;
+    private bool statusIsSuccess;
+
+    protected override void OnInitialized()
+    {
+        RefreshData();
+    }
+
+    private void RefreshData()
+    {
+        users = LibraryService.ReadUsers();
+        borrowedBooks = LibraryService.GetBorrowedBooks();
+    }
+
+    private void HandleAddUser()
+    {
+        var result = LibraryService.AddUser(newUser);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            newUser = new User();
+            RefreshData();
+        }
+    }
+
+    private void BeginEdit(User user)
+    {
+        editingUser = new User
+        {
+            Id = user.Id,
+            Name = user.Name,
+            Email = user.Email
+        };
+    }
+
+    private void CancelEdit()
+    {
+        editingUser = null;
+    }
+
+    private void HandleEditUser()
+    {
+        if (editingUser is null)
+        {
+            return;
+        }
+
+        var result = LibraryService.EditUser(editingUser);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            editingUser = null;
+            RefreshData();
+        }
+    }
+
+    private void HandleDeleteUser(int id)
+    {
+        var result = LibraryService.DeleteUser(id);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            RefreshData();
+
+            if (editingUser?.Id == id)
+            {
+                editingUser = null;
+            }
+        }
+    }
+
+    private int GetBorrowedCount(int userId) =>
+        borrowedBooks.FirstOrDefault(entry => entry.User.Id == userId)?.Books.Count ?? 0;
+
+    private void SetStatus(OperationResult result)
+    {
+        statusIsSuccess = result.Success;
+        statusMessage = result.Message;
+    }
+}

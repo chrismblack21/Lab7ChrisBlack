@@ -1,0 +1,201 @@
+@using System.ComponentModel.DataAnnotations
+@page "/borrowing"
+@inject ILibraryService LibraryService
+
+<PageTitle>Borrow and Return</PageTitle>
+
+<h2>Borrow and Return Books</h2>
+<p>Borrow books for a user and return borrowed books.</p>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="status-banner @(statusIsSuccess ? "status-success" : "status-error")">@statusMessage</div>
+}
+
+<div class="page-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h3>Borrow Book</h3>
+            </div>
+        </div>
+
+        <EditForm Model="borrowRequest" OnValidSubmit="HandleBorrowBook" FormName="BorrowBook">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <div class="field-group field-span">
+                    <label class="field-label" for="borrow-user">User</label>
+                    <InputSelect id="borrow-user" class="text-input" @bind-Value="borrowRequest.UserId">
+                        <option value="0">Select a user</option>
+                        @foreach (var user in users)
+                        {
+                            <option value="@user.Id">@user.Name (@user.Email)</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => borrowRequest.UserId" />
+                </div>
+
+                <div class="field-group field-span">
+                    <label class="field-label" for="borrow-book">Book</label>
+                    <InputSelect id="borrow-book" class="text-input" @bind-Value="borrowRequest.BookId">
+                        <option value="0">Select an available book</option>
+                        @foreach (var item in AvailableInventory)
+                        {
+                            <option value="@item.Id">@item.Title by @item.Author (@item.AvailableCopies available)</option>
+                        }
+                    </InputSelect>
+                    <ValidationMessage For="() => borrowRequest.BookId" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="action-button" disabled="@(!CanBorrow)">Borrow Book</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h3>Current Status</h3>
+            </div>
+        </div>
+
+        <div class="stack-list">
+            <div>
+                <h3>Available copies</h3>
+                <p class="big-inline-number">@AvailableCopyCount</p>
+            </div>
+
+            <div>
+                <h3>Active loans</h3>
+                <p class="big-inline-number">@ActiveLoanCount</p>
+            </div>
+
+            <div>
+                <h3>Ready to borrow?</h3>
+                <p class="muted-text">
+                    @(CanBorrow
+                        ? "Yes. At least one user and one available book are loaded."
+                        : "Not yet. Add users and make sure at least one book is available.")
+                </p>
+            </div>
+        </div>
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h3>Borrowed Books</h3>
+            <p>Return books by user.</p>
+        </div>
+    </div>
+
+    @if (borrowedBooks.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No active loans</h3>
+            <p>Borrowed books will appear here once a user checks one out.</p>
+        </div>
+    }
+    else
+    {
+        <div class="loan-grid">
+            @foreach (var borrower in borrowedBooks)
+            {
+                <section class="loan-card">
+                    <div class="loan-header">
+                        <div>
+                            <h3>@borrower.User.Name</h3>
+                            <p>@borrower.User.Email</p>
+                        </div>
+                        <span class="loan-pill">@borrower.Books.Count borrowed</span>
+                    </div>
+
+                    <div class="loan-list">
+                        @foreach (var book in borrower.Books)
+                        {
+                            <div class="loan-item">
+                                <div>
+                                    <p class="loan-title">@book.Title</p>
+                                    <p class="loan-meta">@book.Author · ISBN @book.ISBN</p>
+                                </div>
+                                <button type="button" class="secondary-button" @onclick="() => HandleReturnBook(borrower.User.Id, book.Id)">Return</button>
+                            </div>
+                        }
+                    </div>
+                </section>
+            }
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<User> users = Array.Empty<User>();
+    private IReadOnlyList<BookInventoryItem> inventory = Array.Empty<BookInventoryItem>();
+    private IReadOnlyList<UserBorrowedBooks> borrowedBooks = Array.Empty<UserBorrowedBooks>();
+    private BorrowRequestModel borrowRequest = new();
+    private string? statusMessage;
+    private bool statusIsSuccess;
+
+    protected override void OnInitialized()
+    {
+        RefreshData();
+    }
+
+    private void RefreshData()
+    {
+        LibraryService.ReadBooks();
+        users = LibraryService.ReadUsers();
+        inventory = LibraryService.GetBookInventory();
+        borrowedBooks = LibraryService.GetBorrowedBooks();
+    }
+
+    private void HandleBorrowBook()
+    {
+        var result = LibraryService.BorrowBook(borrowRequest.UserId, borrowRequest.BookId);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            borrowRequest = new BorrowRequestModel();
+            RefreshData();
+        }
+    }
+
+    private void HandleReturnBook(int userId, int bookId)
+    {
+        var result = LibraryService.ReturnBook(userId, bookId);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            RefreshData();
+        }
+    }
+
+    private void SetStatus(OperationResult result)
+    {
+        statusIsSuccess = result.Success;
+        statusMessage = result.Message;
+    }
+
+    private IEnumerable<BookInventoryItem> AvailableInventory =>
+        inventory.Where(item => item.AvailableCopies > 0);
+
+    private int AvailableCopyCount => inventory.Sum(item => item.AvailableCopies);
+
+    private int ActiveLoanCount => borrowedBooks.Sum(item => item.Books.Count);
+
+    private bool CanBorrow => users.Count > 0 && AvailableInventory.Any();
+
+    private sealed class BorrowRequestModel
+    {
+        [Range(1, int.MaxValue, ErrorMessage = "Select a user.")]
+        public int UserId { get; set; }
+
+        [Range(1, int.MaxValue, ErrorMessage = "Select a book.")]
+        public int BookId { get; set; }
+    }
+}

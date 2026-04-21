@@ -1,0 +1,240 @@
+@page "/books"
+@inject ILibraryService LibraryService
+
+<PageTitle>Books</PageTitle>
+
+<h2>Books</h2>
+<p>Add, edit, delete, and list books.</p>
+
+@if (!string.IsNullOrWhiteSpace(statusMessage))
+{
+    <div class="status-banner @(statusIsSuccess ? "status-success" : "status-error")">@statusMessage</div>
+}
+
+<div class="page-grid">
+    <section class="panel">
+        <div class="panel-heading">
+            <div>
+                <h3>Add Book</h3>
+            </div>
+        </div>
+
+        <EditForm Model="newBook" OnValidSubmit="HandleAddBook" FormName="AddBook">
+            <DataAnnotationsValidator />
+            <div class="form-grid">
+                <div class="field-group">
+                    <label class="field-label" for="new-book-title">Title</label>
+                    <InputText id="new-book-title" class="text-input" @bind-Value="newBook.Title" />
+                    <ValidationMessage For="() => newBook.Title" />
+                </div>
+
+                <div class="field-group">
+                    <label class="field-label" for="new-book-author">Author</label>
+                    <InputText id="new-book-author" class="text-input" @bind-Value="newBook.Author" />
+                    <ValidationMessage For="() => newBook.Author" />
+                </div>
+
+                <div class="field-group field-span">
+                    <label class="field-label" for="new-book-isbn">ISBN</label>
+                    <InputText id="new-book-isbn" class="text-input" @bind-Value="newBook.ISBN" />
+                    <ValidationMessage For="() => newBook.ISBN" />
+                </div>
+            </div>
+
+            <div class="form-actions">
+                <button type="submit" class="action-button">Save Book</button>
+            </div>
+        </EditForm>
+    </section>
+
+    <section class="panel">
+        @if (editingBook is null)
+        {
+            <h3>Edit Book</h3>
+            <p>Select a book from the table to edit it.</p>
+        }
+        else
+        {
+            <div class="panel-heading">
+                <div>
+                    <h3>Edit Book</h3>
+                </div>
+            </div>
+
+            <EditForm Model="editingBook" OnValidSubmit="HandleEditBook" FormName="EditBook">
+                <DataAnnotationsValidator />
+                <div class="form-grid">
+                    <div class="field-group field-span">
+                        <label class="field-label">Book ID</label>
+                        <input class="text-input" value="@editingBook.Id" disabled />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="edit-book-title">Title</label>
+                        <InputText id="edit-book-title" class="text-input" @bind-Value="editingBook.Title" />
+                        <ValidationMessage For="() => editingBook.Title" />
+                    </div>
+
+                    <div class="field-group">
+                        <label class="field-label" for="edit-book-author">Author</label>
+                        <InputText id="edit-book-author" class="text-input" @bind-Value="editingBook.Author" />
+                        <ValidationMessage For="() => editingBook.Author" />
+                    </div>
+
+                    <div class="field-group field-span">
+                        <label class="field-label" for="edit-book-isbn">ISBN</label>
+                        <InputText id="edit-book-isbn" class="text-input" @bind-Value="editingBook.ISBN" />
+                        <ValidationMessage For="() => editingBook.ISBN" />
+                    </div>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="action-button">Update Book</button>
+                    <button type="button" class="secondary-button" @onclick="CancelEdit">Cancel</button>
+                </div>
+            </EditForm>
+        }
+    </section>
+</div>
+
+<section class="panel">
+    <div class="panel-heading">
+        <div>
+            <h3>Book List</h3>
+            <p>@inventory.Count titles, @TotalCopies total copies, @AvailableCopies available.</p>
+        </div>
+    </div>
+
+    @if (inventory.Count == 0)
+    {
+        <div class="empty-state">
+            <h3>No books loaded</h3>
+            <p>Add a book to populate the catalog.</p>
+        </div>
+    }
+    else
+    {
+        <div class="data-table-wrapper">
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Title</th>
+                        <th>Author</th>
+                        <th>ISBN</th>
+                        <th>Total</th>
+                        <th>Available</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var item in inventory)
+                    {
+                        <tr>
+                            <td>@item.Id</td>
+                            <td>@item.Title</td>
+                            <td>@item.Author</td>
+                            <td>@item.ISBN</td>
+                            <td>@item.TotalCopies</td>
+                            <td>@item.AvailableCopies</td>
+                            <td class="table-actions">
+                                <button type="button" class="secondary-button" @onclick="() => BeginEdit(item)">Edit</button>
+                                <button type="button" class="secondary-button danger-button" @onclick="() => HandleDeleteBook(item.Id)">Delete</button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+</section>
+
+@code {
+    private IReadOnlyList<BookInventoryItem> inventory = Array.Empty<BookInventoryItem>();
+    private Book newBook = new();
+    private Book? editingBook;
+    private string? statusMessage;
+    private bool statusIsSuccess;
+
+    protected override void OnInitialized()
+    {
+        RefreshData();
+    }
+
+    private void RefreshData()
+    {
+        LibraryService.ReadBooks();
+        inventory = LibraryService.GetBookInventory();
+    }
+
+    private void HandleAddBook()
+    {
+        var result = LibraryService.AddBook(newBook);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            newBook = new Book();
+            RefreshData();
+        }
+    }
+
+    private void BeginEdit(BookInventoryItem item)
+    {
+        editingBook = new Book
+        {
+            Id = item.Id,
+            Title = item.Title,
+            Author = item.Author,
+            ISBN = item.ISBN
+        };
+    }
+
+    private void CancelEdit()
+    {
+        editingBook = null;
+    }
+
+    private void HandleEditBook()
+    {
+        if (editingBook is null)
+        {
+            return;
+        }
+
+        var result = LibraryService.EditBook(editingBook);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            editingBook = null;
+            RefreshData();
+        }
+    }
+
+    private void HandleDeleteBook(int id)
+    {
+        var result = LibraryService.DeleteBook(id);
+        SetStatus(result);
+
+        if (result.Success)
+        {
+            RefreshData();
+
+            if (editingBook?.Id == id && inventory.All(item => item.Id != id))
+            {
+                editingBook = null;
+            }
+        }
+    }
+
+    private void SetStatus(OperationResult result)
+    {
+        statusIsSuccess = result.Success;
+        statusMessage = result.Message;
+    }
+
+    private int TotalCopies => inventory.Sum(item => item.TotalCopies);
+
+    private int AvailableCopies => inventory.Sum(item => item.AvailableCopies);
+}
