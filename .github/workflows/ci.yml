@@ -25,4 +25,4 @@ jobs:
     - name: Build
       run: dotnet build lab7/Lab5ChrisBlack/Lab5ChrisBlack.sln --no-restore
     - name: Test
-      run: dotnet test lab7/Lab5.testsChrisBlack/Lab5.test.csproj --no-build --verbosity normal
+      run: dotnet test lab7/Lab5.testsChrisBlack/Lab5.tests.csproj --no-build --verbosity normal
